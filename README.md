@@ -14,25 +14,25 @@ Al ejecutar el programa, el usuario debe seleccionar una estación de origen y u
 
 Las estaciones que se manejan en el sistema son:
 
-    -Portal 80
+   -Portal 80
     
-    -Siberia
+   -Siberia
     
-    -La Punta
+   -La Punta
     
-    -Puente Piedra
+   -Puente Piedra
     
-    -El Rosal
+   -El Rosal
     
-    -El Vino
+   -El Vino
     
-    -San Francisco
+   -San Francisco
     
-    -La Vega
+   -La Vega
     
-    -Nocaima
+   -Nocaima
     
-    -Villeta
+   -Villeta
 
 Requisitos previos
 
@@ -54,11 +54,11 @@ Sistema operativo
 
 El proyecto puede ejecutarse en sistemas operativos que tengan soporte para Python, como:
 
-Windows
+  -Windows
 
-Linux
+  -Linux
 
-macOS
+  -macOS
 
 Librerías
 
