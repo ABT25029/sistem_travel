@@ -202,3 +202,48 @@ class MotorInferenciaTransMilenio:
         print("[Regla] NO se cumple ninguna regla. No hay conexión posible entre esos dos puntos.")
         return None
 
+# 3. INTERFAZ DE USUARIO Y PRUEBAS EN CONSOLA
+# Acá le pides al usuario origen y destino, y le muestras cómo el motor de
+# inferencia fue evaluando las reglas hasta llegar al resultado.
+
+
+def ejecutar_sistema():
+    """Interfaz de consola: pides origen y destino, y muestras la ruta calculada."""
+    print("=" * 60)
+    print(" SISTEMA BASADO EN CONOCIMIENTO: BOGOTÁ (PORTAL 80) - VILLETA")
+    print("=" * 60)
+    print("Estaciones disponibles en el sistema:")
+    for idx, est in enumerate(ESTACIONES, 1):  # Le muestras al usuario la lista numerada para que elija
+        print(f" {idx}. {est}")
+    print("-" * 60)
+
+    try:
+        idx_origen = int(input("Seleccione el número de la estación de ORIGEN (Punto A): ")) - 1
+        idx_destino = int(input("Seleccione el número de la estación de DESTINO (Punto B): ")) - 1
+        if not (0 <= idx_origen < len(ESTACIONES) and 0 <= idx_destino < len(ESTACIONES)):  # Validas que el número elegido exista en la lista
+            print("\n[Error] Selección inválida. Elija un número de la lista.")
+            return
+
+        origen = ESTACIONES[idx_origen]
+        destino = ESTACIONES[idx_destino]
+        print(f"\n[Calculando mejor ruta desde '{origen}' hasta '{destino}'...]\n")
+        resultado = MotorInferenciaTransMilenio.buscar_mejor_ruta(origen, destino)  # Aquí se dispara todo el razonamiento del motor
+        print("\n" + "=" * 60)
+        print(" RESULTADO DE LA INFERENCIA LÓGICA")
+        print("=" * 60)
+        if resultado:  # Si el motor sí encontró una ruta, la muestras completa
+            print(f"Tipo de Ruta       : {resultado['tipo']}")
+            print(f"Paradas            : {resultado['paradas']}")
+            if resultado.get('paradas_tiquete'):  # Solo la muestras si hubo revisiones de tiquete
+                print(f"Paradas de tiquete : {resultado['paradas_tiquete']}")
+            print(f"Tiempo Estimado    : {resultado['tiempo_estimado']} minutos")
+            print("\nInstrucciones de Viaje:")
+            for paso in resultado["detalle"]:
+                print(f" -> {paso}")
+        else:  # Si no, le avisas al usuario que no hubo forma de conectar los puntos
+            print("No se encontró una ruta lógica válida para conectar los dos puntos seleccionados.")
+    except ValueError:  # Si el usuario escribe algo que no es un número
+        print("\n[Error] Debe ingresar únicamente números enteros.")
+
+if __name__ == "__main__":
+    ejecutar_sistema()
