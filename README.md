@@ -14,25 +14,25 @@ Al ejecutar el programa, el usuario debe seleccionar una estación de origen y u
 
 Las estaciones que se manejan en el sistema son:
 
-Portal 80
-
-Siberia
-
-La Punta
-
-Puente Piedra
-
-El Rosal
-
-El Vino
-
-San Francisco
-
-La Vega
-
-Nocaima
-
-Villeta
+    -Portal 80
+    
+    -Siberia
+    
+    -La Punta
+    
+    -Puente Piedra
+    
+    -El Rosal
+    
+    -El Vino
+    
+    -San Francisco
+    
+    -La Vega
+    
+    -Nocaima
+    
+    -Villeta
 
 Requisitos previos
 
