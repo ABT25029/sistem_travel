@@ -1,4 +1,4 @@
-Sistema Inteligente Basado en Conocimiento para transporte intermunicipal
+"""Sistema Inteligente Basado en Conocimiento para transporte intermunicipal
 Corredor: Bogotá (Portal 80) - Villeta
 Aquí modelas el conocimiento del dominio (hechos) y las reglas lógicas que
 un motor de inferencia usa para decidir cómo ir de un punto a otro.
