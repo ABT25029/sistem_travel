@@ -55,4 +55,150 @@ TIEMPO_ACUMULADO: Dict[str, int] = {
 }
  
 TIEMPO_TRASBORDO = 15  # minutos que penalizas por cambiarte de ruta (esperar el siguiente bus)
- 
+ # ============================================================
+# 2. MOTOR DE INFERENCIA Y REGLAS LÓGICAS
+# Cada método "regla_..." representa una regla del tipo SI (condición)
+# ENTONCES (conclusión) — el mismo principio de los if/elif del ejemplo de
+# clase, solo que aquí las reglas se evalúan recorriendo datos en vez de
+# escribirse una por una a mano.
+# ============================================================
+
+class MotorInferenciaTransMilenio:
+    """Agrupa las reglas lógicas que resuelven cómo ir de una estación a otra."""
+
+    @staticmethod
+    def regla_conexion_directa(estacion_origen: str, estacion_destino: str) -> List[Dict]:
+        """
+        Regla 1 (conexión directa):
+        SI el origen y el destino están en la misma ruta, y el origen aparece
+        ANTES que el destino en esa ruta,
+        ENTONCES existe un viaje directo (sin trasbordo) entre ambos.
+        """
+        opciones_directas = []
+
+        # Revisas una por una todas las rutas que existen en la base de conocimiento
+        for nombre_ruta, estaciones in RUTAS.items():
+
+            # Primer chequeo de la regla: ¿esta ruta pasa por los dos puntos?
+            if estacion_origen in estaciones and estacion_destino in estaciones:
+                idx_orig = estaciones.index(estacion_origen)  # Posición del origen dentro de esta ruta
+                idx_dest = estaciones.index(estacion_destino)  # Posición del destino dentro de esta ruta
+
+                # Segundo chequeo de la regla: el origen debe ir ANTES que el
+                # destino; si no, esta ruta no sirve en este sentido
+                if idx_orig < idx_dest:
+                    paradas = idx_dest - idx_orig  # Cantidad de municipios entre origen y destino
+
+                    # Tiempo puro de viaje (sin contar revisiones de tiquete),
+                    # calculado como la diferencia de tiempos acumulados
+                    tiempo_viaje = abs(TIEMPO_ACUMULADO[estacion_destino] - TIEMPO_ACUMULADO[estacion_origen])
+
+                    # Ahora revisas si en el camino hay revisiones de tiquete que sumen tiempo
+                    tramo = estaciones[idx_orig + 1:idx_dest]  # Municipios intermedios, sin contar origen ni destino
+                    tiquetes_ruta = PARADAS_TIQUETE.get(nombre_ruta, {})  # Diccionario de revisiones de esta ruta
+                    tiquetes_en_tramo = {e: tiquetes_ruta[e] for e in tramo if e in tiquetes_ruta}  # Solo los que caen dentro del tramo
+                    total_revisiones = sum(tiquetes_en_tramo.values())  # Suma de revisiones (puede haber más de una por municipio)
+                    tiempo_tiquetes = total_revisiones * TIEMPO_TIQUETE  # Minutos extra por esas revisiones
+                    tiempo = tiempo_viaje + tiempo_tiquetes  # Tiempo total: viaje + revisiones de tiquete
+
+                    # Armas el mensaje explicando el viaje, paso a paso
+                    detalle = [f"Toma {nombre_ruta} desde '{estacion_origen}' hasta '{estacion_destino}' ({paradas} paradas)."]
+                    if tiquetes_en_tramo:  # Solo agregas esta línea si de verdad hubo revisiones en el camino
+                        nombres = ", ".join(f"'{e}' ({cant})" for e, cant in tiquetes_en_tramo.items())
+                        detalle.append(f"Incluye revisión de tiquetes en {nombres} (+{tiempo_tiquetes} min).")
+
+                    # Guardas esta opción de viaje directo con toda su información
+                    opciones_directas.append({
+                        "tipo": "Directa",
+                        "trasbordos": 0,
+                        "paradas": paradas,
+                        "paradas_tiquete": total_revisiones,
+                        "tiempo_estimado": tiempo,
+                        "detalle": detalle
+                    })
+
+        return opciones_directas
+
+    @staticmethod
+    def regla_conexion_trasbordo(estacion_origen: str, estacion_destino: str) -> List[Dict]:
+        """
+        Regla 2 (conexión con trasbordo):
+        SI no existe una ruta directa entre origen y destino,
+        ENTONCES buscas un municipio intermedio que sí conecte con ambos por
+        separado, para armar el viaje en dos tramos con un trasbordo.
+        """
+        opciones_trasbordo = []
+
+        # Pruebas cada municipio del corredor como posible punto de trasbordo
+        for estacion_intermedia in ESTACIONES:
+
+            # No tiene sentido "trasbordar" justo en el origen o en el destino
+            if estacion_intermedia in (estacion_origen, estacion_destino):
+                continue
+
+            # Tramo 1: origen -> estación intermedia (usando la Regla 1)
+            trayectos_1 = MotorInferenciaTransMilenio.regla_conexion_directa(estacion_origen, estacion_intermedia)
+            # Tramo 2: estación intermedia -> destino (usando la Regla 1)
+            trayectos_2 = MotorInferenciaTransMilenio.regla_conexion_directa(estacion_intermedia, estacion_destino)
+
+            # Combinas cada opción del tramo 1 con cada opción del tramo 2
+            for t1 in trayectos_1:
+                for t2 in trayectos_2:
+                    # El tiempo total suma los dos tramos más la espera del trasbordo
+                    tiempo_total = t1["tiempo_estimado"] + t2["tiempo_estimado"] + TIEMPO_TRASBORDO
+                    opciones_trasbordo.append({
+                        "tipo": "Con Trasbordo",
+                        "trasbordos": 1,
+                        "paradas": t1["paradas"] + t2["paradas"],
+                        "tiempo_estimado": tiempo_total,
+                        "estacion_trasbordo": estacion_intermedia,
+                        "detalle": [
+                            t1["detalle"][0],
+                            f"Haz trasbordo en '{estacion_intermedia}' (tiempo estimado trasbordo: {TIEMPO_TRASBORDO} min).",
+                            t2["detalle"][0]
+                        ]
+                    })
+
+        return opciones_trasbordo
+
+    @classmethod
+    def buscar_mejor_ruta(cls, origen: str, destino: str) -> Optional[Dict]:
+        """
+        Punto de entrada del motor de inferencia: valida las estaciones y
+        devuelve la ruta más rápida, evaluando primero la Regla 1 (directa)
+        y, si no aplica, la Regla 2 (trasbordo) — igual que encadenas
+        if/elif/else en el ejemplo de clase.
+        """
+        # Validación: ambas estaciones deben existir en la base de conocimiento
+        if origen not in ESTACIONES or destino not in ESTACIONES:
+            print("[Regla] Alguna de las estaciones no existe en el sistema. No se puede inferir una ruta.")
+            return None
+
+        # Caso trivial: origen y destino son el mismo punto
+        if origen == destino:
+            print("[Regla] Origen y destino son la misma estación. No se necesita viajar.")
+            return {"tipo": "Misma Estación", "trasbordos": 0, "paradas": 0, "tiempo_estimado": 0, "detalle": ["Ya te encuentras en la estación destino."]}
+
+        # --- Paso 1: evalúas la Regla 1 (conexión directa) ---
+        print(f"[Regla] Evaluando SI existe una ruta directa entre '{origen}' y '{destino}'...")
+        rutas_directas = cls.regla_conexion_directa(origen, destino)
+
+        if rutas_directas:
+            print(f"[Regla] SE CUMPLE: encontraste {len(rutas_directas)} opción(es) directa(s). Eliges la más rápida.")
+            # Si dos opciones empatan en tiempo, gana la que tenga menos paradas
+            # (más cómoda para el pasajero)
+            rutas_directas.sort(key=lambda x: (x["tiempo_estimado"], x["paradas"]))
+            return rutas_directas[0]
+
+        # --- Paso 2: si la Regla 1 no aplicó, evalúas la Regla 2 (trasbordo) ---
+        print("[Regla] NO se cumple la conexión directa. Evaluando SI es posible con un trasbordo...")
+        rutas_trasbordo = cls.regla_conexion_trasbordo(origen, destino)
+        if rutas_trasbordo:
+            print(f"[Regla] SE CUMPLE: encontraste {len(rutas_trasbordo)} opción(es) con trasbordo. Eliges la más rápida.")
+            rutas_trasbordo.sort(key=lambda x: (x["tiempo_estimado"], x["paradas"]))
+            return rutas_trasbordo[0]
+
+        # Ninguna regla aplicó: no hay forma de conectar esos dos puntos
+        print("[Regla] NO se cumple ninguna regla. No hay conexión posible entre esos dos puntos.")
+        return None
+
