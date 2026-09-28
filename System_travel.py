@@ -63,7 +63,7 @@ TIEMPO_TRASBORDO = 15  # minutos para cambiarte de ruta (esperar el siguiente bu
 # se evalúa recorriendo los datos en vez de escribir uno por uno
 
 
-class MotorInferenciaTransMilenio:
+class MotorInferenciaViaje:
     """Agrupa las reglas lógicas que resuelven cómo ir de una estación a otra."""
 
     @staticmethod
@@ -156,7 +156,7 @@ def ejecutar_sistema():
         origen = ESTACIONES[idx_origen]
         destino = ESTACIONES[idx_destino]
         print(f"\n[Calculando mejor ruta desde '{origen}' hasta '{destino}'...]\n")
-        resultado = MotorInferenciaTransMilenio.buscar_mejor_ruta(origen, destino)  # Aquí se dispara todo el razonamiento del motor
+        resultado = MotorInferenciaViaje.buscar_mejor_ruta(origen, destino)  # Aquí se dispara todo el razonamiento del motor
         print("\n" + "=" * 60)
         print(" RESULTADO DE LA INFERENCIA LÓGICA")
         print("=" * 60)
