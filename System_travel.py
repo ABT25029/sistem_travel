@@ -103,37 +103,7 @@ class MotorInferenciaTransMilenio:
                     })
         return opciones_directas
 
-    @staticmethod
-    def regla_conexion_trasbordo(estacion_origen: str, estacion_destino: str) -> List[Dict]:
-        """Regla: SI no hay ruta directa, ENTONCES buscas una estación
-        intermedia que te conecte con ambas (haciendo trasbordo ahí)."""
-        opciones_trasbordo = []
-        for estacion_intermedia in ESTACIONES:  # Pruebas cada municipio como posible punto de trasbordo
-            if estacion_intermedia in (estacion_origen, estacion_destino):  # No tiene sentido "trasbordar" en el origen o el destino
-                continue
-
-            # Buscas trayecto 1: Origen -> Intermedia
-            trayectos_1 = MotorInferenciaTransMilenio.regla_conexion_directa(estacion_origen, estacion_intermedia)
-            # Buscas trayecto 2: Intermedia -> Destino
-            trayectos_2 = MotorInferenciaTransMilenio.regla_conexion_directa(estacion_intermedia, estacion_destino)
-
-            for t1 in trayectos_1:  # Combinas cada opción del primer tramo...
-                for t2 in trayectos_2:  # ...con cada opción del segundo tramo
-                    tiempo_total = t1["tiempo_estimado"] + t2["tiempo_estimado"] + TIEMPO_TRASBORDO
-                    opciones_trasbordo.append({
-                        "tipo": "Con Trasbordo",
-                        "trasbordos": 1,
-                        "paradas": t1["paradas"] + t2["paradas"],
-                        "tiempo_estimado": tiempo_total,
-                        "estacion_trasbordo": estacion_intermedia,
-                        "detalle": [
-                            t1["detalle"][0],
-                            f"Haz trasbordo en '{estacion_intermedia}' (tiempo estimado trasbordo: {TIEMPO_TRASBORDO} min).",
-                            t2["detalle"][0]
-                        ]
-                    })
-        return opciones_trasbordo
-
+ 
     @classmethod
     def buscar_mejor_ruta(cls, origen: str, destino: str) -> Optional[Dict]:
         """Punto de entrada: validas las estaciones y devuelves la ruta más
