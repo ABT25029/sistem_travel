@@ -53,7 +53,7 @@ TIEMPO_ACUMULADO: Dict[str, int] = {
     "Villeta": 120,
 }
 
-TIEMPO_TRASBORDO = 15  # minutos para cambiarte de ruta (esperar el siguiente bus)
+
 
 
 
@@ -69,24 +69,27 @@ class MotorInferenciaViaje:
     @staticmethod
     def regla_conexion_directa(estacion_origen: str, estacion_destino: str) -> List[Dict]:
         """Regla: SI origen y destino están en la misma ruta y en ese orden,
-        ENTONCES puedes ir directo (sin trasbordo)."""
+        ENTONCES puedes ir directo (sin trasbordo). El tiempo incluye las
+        revisiones de tiquete de los municipios intermedios (no las del origen
+        ni las del destino)."""
         opciones_directas = []
         for nombre_ruta, estaciones in RUTAS.items():  # Revisas cada ruta que tienes en la base de conocimiento
             if estacion_origen in estaciones and estacion_destino in estaciones:  # ¿La ruta toca ambos puntos?
                 idx_orig = estaciones.index(estacion_origen)
                 idx_dest = estaciones.index(estacion_destino)
 
-                if idx_orig < idx_dest:  # El origen debe ir ANTES que el destino en esa ruta; si no, no aplica
-                    paradas = idx_dest - idx_orig  # Cuántos municipios hay entre origen y destino
-                    tiempo_viaje = abs(TIEMPO_ACUMULADO[estacion_destino] - TIEMPO_ACUMULADO[estacion_origen])  # Tiempo puro de viaje (sin tiquetes)
-
-                    # Ahora calculas si en el camino hay revisiones de tiquete
-                    tramo = estaciones[idx_orig + 1:idx_dest]  # Municipios intermedios (sin contar origen ni destino)
-                    tiquetes_ruta = PARADAS_TIQUETE.get(nombre_ruta, {})  # Diccionario de revisiones de esta ruta
-                    tiquetes_en_tramo = {e: tiquetes_ruta[e] for e in tramo if e in tiquetes_ruta}  # Solo los que caen en el tramo
-                    total_revisiones = sum(tiquetes_en_tramo.values())  # Suma de revisiones (puede haber más de 1 por municipio)
-                    tiempo_tiquetes = total_revisiones * TIEMPO_TIQUETE  # Minutos extra por  revision
-                    tiempo = tiempo_viaje + tiempo_tiquetes  # Tiempo total: viaje + revisiones
+              if idx_orig < idx_dest:  # El origen debe ir ANTES que el destino en esa ruta; si no, no aplica
+                paradas = idx_dest - idx_orig  # Número de paradas del viaje: municipios intermedios + el destino (el origen no cuenta)
+                tiempo_viaje = abs(TIEMPO_ACUMULADO[estacion_destino] - TIEMPO_ACUMULADO[estacion_origen])  # Tiempo puro de viaje; abs() porque TIEMPO_ACUMULADO se mide desde Portal 80 y en el sentido de regreso la resta sale negativa
+            
+                # Regla de diseño: la revisión de tiquetes solo se cobra en municipios INTERMEDIOS.
+                # No se cuenta en el origen ni en el destino.
+                tramo = estaciones[idx_orig + 1:idx_dest]  # Municipios intermedios (excluye origen y destino)
+                tiquetes_ruta = PARADAS_TIQUETE.get(nombre_ruta, {})  # Revisiones definidas para esta ruta/sentido
+                tiquetes_en_tramo = {e: tiquetes_ruta[e] for e in tramo if e in tiquetes_ruta}  # Solo las que caen en el tramo intermedio
+                total_revisiones = sum(tiquetes_en_tramo.values())  # Total de revisiones (puede haber más de 1 por municipio)
+                tiempo_tiquetes = total_revisiones * TIEMPO_TIQUETE  # Minutos extra por las revisiones
+                tiempo = tiempo_viaje + tiempo_tiquetes  # Tiempo total: viaje + revisiones
 
                     detalle = [f"Toma {nombre_ruta} desde '{estacion_origen}' hasta '{estacion_destino}' ({paradas} paradas)."]
                     if tiquetes_en_tramo:  # Si hubo revisiones en el camino, las explicas aparte
@@ -105,10 +108,10 @@ class MotorInferenciaViaje:
 
  
     @classmethod
-    def buscar_mejor_ruta(cls, origen: str, destino: str) -> Optional[Dict]:
-        """Punto de entrada: validas las estaciones y devuelves la ruta más
-        rápida, evaluando primero la regla directa y luego la de trasbordo
-        (igual que encadenas if/elif/else en el ejemplo de clase)."""
+        def buscar_mejor_ruta(cls, origen: str, destino: str) -> Optional[Dict]:
+            """Punto de entrada: valida las estaciones y devuelve la ruta directa
+            más rápida entre origen y destino. Devuelve None si alguna estación
+            no existe o si no hay ruta directa (no se manejan trasbordos)."""
         if origen not in ESTACIONES or destino not in ESTACIONES:  # Validas que ambos puntos existan en tu base de conocimiento
             print("[Regla] Alguna de las estaciones no existe en el sistema. No se puede inferir una ruta.")
             return None
@@ -117,7 +120,7 @@ class MotorInferenciaViaje:
             print("[Regla] Origen y destino son la misma estación. No se necesita viajar.")
             return {"tipo": "Misma Estación", "trasbordos": 0, "paradas": 0, "tiempo_estimado": 0, "detalle": ["Ya te encuentras en la estación destino."]}
 
-        # --- Paso 1: evalua la regla de conexión directa ---
+        # --- Paso 1: evaluar la regla de conexión directa (única regla disponible) ---
         print(f"[Regla] Evaluando SI existe una ruta directa entre '{origen}' y '{destino}'...")
         rutas_directas = cls.regla_conexion_directa(origen, destino)
 
