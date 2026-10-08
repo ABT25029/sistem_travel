@@ -1,46 +1,115 @@
 # -*- coding: utf-8 -*-
+
 """
-Sistema Inteligente Basado en Conocimiento para transporte intermunicipal
+============================================================
+SISTEMA INTELIGENTE BASADO EN CONOCIMIENTO
+TRANSPORTE INTERMUNICIPAL
 Corredor: Bogotá (Portal 80) - Villeta
-Aquí modelas el conocimiento del dominio (hechos) y las reglas lógicas que
-un motor de inferencia usa para decidir cómo ir de un punto a otro.
+
+Incluye:
+1. Sistema basado en reglas para calcular la ruta y tiempo.
+2. Aprendizaje supervisado para predecir tráfico.
+3. Aprendizaje supervisado para estimar afectación climática.
+4. Tiempo original + posible afectación por clima.
+============================================================
 """
 
-from typing import List, Dict, Optional, Tuple
+
+# ============================================================
+# 1. IMPORTACIÓN DE LIBRERÍAS
+# ============================================================
+
+from typing import List, Dict, Optional
+import random
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import classification_report
 
 
-# 1. BASE DE CONOCIMIENTO (Hechos del Dominio)
-# Acá guardas todo lo que el sistema "sabe" del mundo: municipios, rutas,
-# tiempos y puntos de control. Las reglas de más abajo usan estos datos.
+# ============================================================
+# 2. BASE DE CONOCIMIENTO
+# ============================================================
 
-
-# Lista de todos los municipios/paradas válidas del corredor Bogotá - Villeta.
 ESTACIONES = [
-    "Portal 80", "Siberia", "La Punta", "Puente Piedra", "El Rosal",
-    "El Vino", "San Francisco", "La Vega", "Nocaima", "Villeta"
+    "Portal 80",
+    "Siberia",
+    "La Punta",
+    "Puente Piedra",
+    "El Rosal",
+    "El Vino",
+    "San Francisco",
+    "La Vega",
+    "Nocaima",
+    "Villeta"
 ]
 
-# Cada ruta es una lista ordenada de paradas: define por dónde pasa y en qué
-# sentido. El bus para en TODOS los municipios del corredor.
+
+# ------------------------------------------------------------
+# RUTAS ORIGINALES
+# ------------------------------------------------------------
+
 RUTAS: Dict[str, List[str]] = {
-    "Bogotá - Villeta": ["Portal 80", "Siberia", "La Punta", "Puente Piedra", "El Rosal", "El Vino", "San Francisco", "La Vega", "Nocaima", "Villeta"],
-    "Villeta - Bogotá": ["Villeta", "Nocaima", "La Vega", "San Francisco", "El Vino", "El Rosal", "Puente Piedra", "La Punta", "Siberia", "Portal 80"],
+
+    "Bogotá - Villeta": [
+        "Portal 80",
+        "Siberia",
+        "La Punta",
+        "Puente Piedra",
+        "El Rosal",
+        "El Vino",
+        "San Francisco",
+        "La Vega",
+        "Nocaima",
+        "Villeta"
+    ],
+
+    "Villeta - Bogotá": [
+        "Villeta",
+        "Nocaima",
+        "La Vega",
+        "San Francisco",
+        "El Vino",
+        "El Rosal",
+        "Puente Piedra",
+        "La Punta",
+        "Siberia",
+        "Portal 80"
+    ],
 }
 
-# Paradas de revisión de tiquetes: por cada ruta/sentido, se define un
-# diccionario {municipio: cuántas revisiones de tiquete se hacen ahí}.
-# Dependen de la ruta/sentido, suman tiempo extra
+
+# ------------------------------------------------------------
+# PARADAS DE REVISIÓN DE TIQUETES
+# ------------------------------------------------------------
+
 PARADAS_TIQUETE: Dict[str, Dict[str, int]] = {
-    "Bogotá - Villeta": {"El Rosal": 1, "La Vega": 1},
-    "Villeta - Bogotá": {"Nocaima": 1, "La Vega": 1, "El Rosal": 1},
-}
-TIEMPO_TIQUETE = 10  # minutos que le sumas al viaje por cada revisión de tiquete en municipios intermedios
 
-# Tiempos acumulados (en minutos) desde Portal 80 hasta cada estación, medidos
-# sobre el orden real del corredor Bogotá - Villeta (lista ESTACIONES).
-# El recorrido completo Portal 80 -> Villeta dura siempre 120 minutos (2 horas).
-# Los tramos van disminuyendo (20, 18, 16, 14, 12, 10, 10, 10, 10)
+    "Bogotá - Villeta": {
+        "El Rosal": 1,
+        "La Vega": 1
+    },
+
+    "Villeta - Bogotá": {
+        "Nocaima": 1,
+        "La Vega": 1,
+        "El Rosal": 1
+    },
+
+}
+
+
+TIEMPO_TIQUETE = 10
+
+
+# ------------------------------------------------------------
+# TIEMPOS ACUMULADOS
+# ------------------------------------------------------------
+
 TIEMPO_ACUMULADO: Dict[str, int] = {
+
     "Portal 80": 0,
     "Siberia": 20,
     "La Punta": 38,
@@ -51,127 +120,1290 @@ TIEMPO_ACUMULADO: Dict[str, int] = {
     "La Vega": 100,
     "Nocaima": 110,
     "Villeta": 120,
+
 }
 
 
-# 2. MOTOR DE INFERENCIA Y REGLAS LÓGICAS
-# Cada método "regla_..." es una regla del tipo SI (condición) ENTONCES
-# (conclusión), igual que los if/elif del ejemplo de clase, solo que aquí
-# se evalúa recorriendo los datos en vez de escribir uno por uno
+TIEMPO_TRASBORDO = 15
 
 
-class MotorInferenciaViaje:
-    """Agrupa las reglas lógicas que resuelven cómo ir de una estación a otra."""
+# ============================================================
+# 3. MOTOR DE INFERENCIA
+# ============================================================
+
+class TransMi:
+
+    """
+    Agrupa las reglas lógicas que resuelven cómo
+    ir de una estación a otra.
+    """
 
     @staticmethod
-    def regla_conexion_directa(estacion_origen: str, estacion_destino: str) -> List[Dict]:
-        """Regla: SI origen y destino están en la misma ruta y en ese orden,
-        ENTONCES puedes ir directo (sin trasbordo). El tiempo incluye las
-        revisiones de tiquete de los municipios intermedios (no las del origen
-        ni las del destino)."""
+    def regla_conexion_directa(
+        estacion_origen: str,
+        estacion_destino: str
+    ) -> List[Dict]:
+
         opciones_directas = []
-        for nombre_ruta, estaciones in RUTAS.items():  # Revisas cada ruta que tienes en la base de conocimiento
-            if estacion_origen in estaciones and estacion_destino in estaciones:  # ¿La ruta toca ambos puntos?
+
+        # Recorremos las rutas existentes
+        for nombre_ruta, estaciones in RUTAS.items():
+
+            # Verificamos si ambas estaciones pertenecen a la ruta
+            if (
+                estacion_origen in estaciones
+                and estacion_destino in estaciones
+            ):
+
                 idx_orig = estaciones.index(estacion_origen)
                 idx_dest = estaciones.index(estacion_destino)
 
-                if idx_orig < idx_dest:  # El origen debe ir ANTES que el destino en esa ruta; si no, no aplica
-                    paradas = idx_dest - idx_orig  # Número de paradas del viaje: municipios intermedios + el destino (el origen no cuenta)
-                    tiempo_viaje = abs(TIEMPO_ACUMULADO[estacion_destino] - TIEMPO_ACUMULADO[estacion_origen])  # Tiempo puro de viaje; abs() porque TIEMPO_ACUMULADO se mide desde Portal 80 y en el sentido de regreso la resta sale negativa
+                # El origen debe estar antes del destino
+                if idx_orig < idx_dest:
 
-                    # Regla de diseño: la revisión de tiquetes solo se cobra en municipios INTERMEDIOS.
-                    # No se cuenta en el origen ni en el destino.
-                    tramo = estaciones[idx_orig + 1:idx_dest]  # Municipios intermedios (excluye origen y destino)
-                    tiquetes_ruta = PARADAS_TIQUETE.get(nombre_ruta, {})  # Revisiones definidas para esta ruta/sentido
-                    tiquetes_en_tramo = {e: tiquetes_ruta[e] for e in tramo if e in tiquetes_ruta}  # Solo las que caen en el tramo intermedio
-                    total_revisiones = sum(tiquetes_en_tramo.values())  # Total de revisiones (puede haber más de 1 por municipio)
-                    tiempo_tiquetes = total_revisiones * TIEMPO_TIQUETE  # Minutos extra por las revisiones
-                    tiempo = tiempo_viaje + tiempo_tiquetes  # Tiempo total: viaje + revisiones
+                    paradas = idx_dest - idx_orig
 
-                    detalle = [f"Toma {nombre_ruta} desde '{estacion_origen}' hasta '{estacion_destino}' ({paradas} paradas)."]
-                    if tiquetes_en_tramo:  # Si hubo revisiones en el camino, las explicas aparte
-                        nombres = ", ".join(f"'{e}' ({cant})" for e, cant in tiquetes_en_tramo.items())
-                        detalle.append(f"Incluye revisión de tiquetes en {nombres} (+{tiempo_tiquetes} min).")
+                    # Tiempo original del sistema
+                    tiempo_viaje = abs(
+                        TIEMPO_ACUMULADO[estacion_destino]
+                        - TIEMPO_ACUMULADO[estacion_origen]
+                    )
+
+                    # Revisiones de tiquetes
+                    tramo = estaciones[idx_orig + 1:idx_dest]
+
+                    tiquetes_ruta = PARADAS_TIQUETE.get(
+                        nombre_ruta,
+                        {}
+                    )
+
+                    tiquetes_en_tramo = {
+                        e: tiquetes_ruta[e]
+                        for e in tramo
+                        if e in tiquetes_ruta
+                    }
+
+                    total_revisiones = sum(
+                        tiquetes_en_tramo.values()
+                    )
+
+                    tiempo_tiquetes = (
+                        total_revisiones * TIEMPO_TIQUETE
+                    )
+
+                    # Tiempo original
+                    tiempo = (
+                        tiempo_viaje
+                        + tiempo_tiquetes
+                    )
+
+                    # Detalle del viaje
+                    detalle = [
+                        f"Toma {nombre_ruta} desde "
+                        f"'{estacion_origen}' hasta "
+                        f"'{estacion_destino}' "
+                        f"({paradas} paradas)."
+                    ]
+
+                    if tiquetes_en_tramo:
+
+                        nombres = ", ".join(
+                            f"'{e}' ({cant})"
+                            for e, cant
+                            in tiquetes_en_tramo.items()
+                        )
+
+                        detalle.append(
+                            f"Incluye revisión de tiquetes "
+                            f"en {nombres} "
+                            f"(+{tiempo_tiquetes} min)."
+                        )
 
                     opciones_directas.append({
+
                         "tipo": "Directa",
+
+                        "ruta": nombre_ruta,
+
                         "trasbordos": 0,
+
                         "paradas": paradas,
-                        "paradas_tiquete": total_revisiones,
-                        "tiempo_estimado": tiempo,
+
+                        "paradas_tiquete":
+                            total_revisiones,
+
+                        "tiempo_estimado":
+                            tiempo,
+
                         "detalle": detalle
+
                     })
+
         return opciones_directas
 
+
     @classmethod
-    def buscar_mejor_ruta(cls, origen: str, destino: str) -> Optional[Dict]:
-        """Punto de entrada: valida las estaciones y devuelve la ruta directa
-        más rápida entre origen y destino. Devuelve None si alguna estación
-        no existe o si no hay ruta directa (no se manejan trasbordos)."""
-        if origen not in ESTACIONES or destino not in ESTACIONES:  # Validas que ambos puntos existan en tu base de conocimiento
-            print("[Regla] Alguna de las estaciones no existe en el sistema. No se puede inferir una ruta.")
+    def buscar_mejor_ruta(
+        cls,
+        origen: str,
+        destino: str
+    ) -> Optional[Dict]:
+
+        # Validación
+        if (
+            origen not in ESTACIONES
+            or destino not in ESTACIONES
+        ):
+
+            print(
+                "[Regla] Alguna de las estaciones "
+                "no existe en el sistema."
+            )
+
             return None
 
-        if origen == destino:  # Caso trivial: ya llegaste
-            print("[Regla] Origen y destino son la misma estación. No se necesita viajar.")
-            return {"tipo": "Misma Estación", "trasbordos": 0, "paradas": 0, "tiempo_estimado": 0, "detalle": ["Ya te encuentras en la estación destino."]}
 
-        # --- Paso 1: evaluar la regla de conexión directa (única regla disponible) ---
-        print(f"[Regla] Evaluando SI existe una ruta directa entre '{origen}' y '{destino}'...")
-        rutas_directas = cls.regla_conexion_directa(origen, destino)
+        # Mismo punto
+        if origen == destino:
+
+            print(
+                "[Regla] Origen y destino son "
+                "la misma estación."
+            )
+
+            return {
+
+                "tipo": "Misma Estación",
+
+                "ruta": "Ninguna",
+
+                "trasbordos": 0,
+
+                "paradas": 0,
+
+                "paradas_tiquete": 0,
+
+                "tiempo_estimado": 0,
+
+                "detalle": [
+                    "Ya te encuentras en la estación destino."
+                ]
+
+            }
+
+
+        # ----------------------------------------------------
+        # REGLA DE CONEXIÓN DIRECTA
+        # ----------------------------------------------------
+
+        print(
+            f"[Regla] Evaluando SI existe una ruta "
+            f"directa entre '{origen}' y '{destino}'..."
+        )
+
+        rutas_directas = cls.regla_conexion_directa(
+            origen,
+            destino
+        )
+
 
         if rutas_directas:
-            print(f"[Regla] SE CUMPLE: encontraste {len(rutas_directas)} opción(es) directa(s). Eliges la más rápida.")
-            # Si empatan en tiempo, prefieres la de menos paradas (más cómoda para el pasajero)
-            rutas_directas.sort(key=lambda x: (x["tiempo_estimado"], x["paradas"]))
+
+            print(
+                f"[Regla] SE CUMPLE: "
+                f"{len(rutas_directas)} opción(es) directa(s)."
+            )
+
+            rutas_directas.sort(
+                key=lambda x: (
+                    x["tiempo_estimado"],
+                    x["paradas"]
+                )
+            )
+
             return rutas_directas[0]
 
-        return None  # No hay ruta directa y no se manejan trasbordos
+
+        # ----------------------------------------------------
+        # NO HAY RUTA DIRECTA
+        # ----------------------------------------------------
+
+        print(
+            "[Regla] NO se encontró una conexión directa."
+        )
+
+        return None
 
 
-# 3. INTERFAZ DE USUARIO Y PRUEBAS EN CONSOLA
-# Acá se pide al usuario origen y destino, y le muestras cómo el motor de
-# inferencia fue evaluando las reglas hasta llegar al resultado.
+# ============================================================
+# 4. GENERACIÓN DEL DATASET DE TRÁFICO
+# ============================================================
 
+def generar_dataset_trafico(cantidad=800):
+
+    datos = []
+
+    dias = [
+        "Lunes",
+        "Martes",
+        "Miércoles",
+        "Jueves",
+        "Viernes",
+        "Sábado",
+        "Domingo"
+    ]
+
+    rutas = list(RUTAS.keys())
+
+    for _ in range(cantidad):
+
+        hora = random.randint(5, 22)
+
+        dia = random.choice(dias)
+
+        ruta = random.choice(rutas)
+
+        # ----------------------------------------------------
+        # REGLAS SIMULADAS PARA CREAR EL TRÁFICO
+        # ----------------------------------------------------
+
+        puntaje = 0
+
+        # Horas pico
+        if hora in [7, 8, 9]:
+            puntaje += 2
+
+        elif hora in [17, 18, 19]:
+            puntaje += 2
+
+        elif hora in [10, 11, 12, 13, 14, 15, 16]:
+            puntaje += 1
+
+        # Fin de semana
+        if dia in ["Sábado", "Domingo"]:
+            puntaje -= 1
+
+        # Viernes
+        if dia == "Viernes":
+            puntaje += 1
+
+        # Ruta Bogotá - Villeta
+        if ruta == "Bogotá - Villeta":
+            puntaje += 1
+
+        # Clasificación
+        if puntaje >= 3:
+
+            trafico = "Alto"
+
+        elif puntaje >= 1:
+
+            trafico = "Medio"
+
+        else:
+
+            trafico = "Bajo"
+
+
+        datos.append({
+
+            "hora": hora,
+
+            "dia": dia,
+
+            "ruta": ruta,
+
+            "trafico": trafico
+
+        })
+
+
+    return pd.DataFrame(datos)
+
+
+# ============================================================
+# 5. PREPARACIÓN DEL MODELO DE TRÁFICO
+# ============================================================
+
+df_trafico = generar_dataset_trafico(800)
+
+
+print("=" * 60)
+print("DATASET DE TRÁFICO")
+print("=" * 60)
+
+display(df_trafico.head(20))
+
+
+# ------------------------------------------------------------
+# CONVERTIR VARIABLES CATEGÓRICAS
+# ------------------------------------------------------------
+
+encoder_dia_trafico = LabelEncoder()
+encoder_ruta_trafico = LabelEncoder()
+encoder_trafico = LabelEncoder()
+
+
+df_trafico["dia_cod"] = (
+    encoder_dia_trafico.fit_transform(
+        df_trafico["dia"]
+    )
+)
+
+
+df_trafico["ruta_cod"] = (
+    encoder_ruta_trafico.fit_transform(
+        df_trafico["ruta"]
+    )
+)
+
+
+df_trafico["trafico_cod"] = (
+    encoder_trafico.fit_transform(
+        df_trafico["trafico"]
+    )
+)
+
+
+# ------------------------------------------------------------
+# VARIABLES DEL MODELO
+# ------------------------------------------------------------
+
+X_trafico = df_trafico[
+    [
+        "hora",
+        "dia_cod",
+        "ruta_cod"
+    ]
+]
+
+
+y_trafico = df_trafico[
+    "trafico_cod"
+]
+
+
+# ------------------------------------------------------------
+# DIVISIÓN ENTRENAMIENTO / PRUEBA
+# ------------------------------------------------------------
+
+X_train_t, X_test_t, y_train_t, y_test_t = train_test_split(
+
+    X_trafico,
+    y_trafico,
+
+    test_size=0.20,
+
+    random_state=42,
+
+    stratify=y_trafico
+)
+
+
+# ------------------------------------------------------------
+# MODELO SUPERVISADO
+# ------------------------------------------------------------
+
+modelo_trafico = RandomForestClassifier(
+
+    n_estimators=100,
+
+    random_state=42
+
+)
+
+
+modelo_trafico.fit(
+    X_train_t,
+    y_train_t
+)
+
+
+# ------------------------------------------------------------
+# EVALUACIÓN: SOLO PRECISIÓN
+# ------------------------------------------------------------
+
+predicciones_trafico = modelo_trafico.predict(
+    X_test_t
+)
+
+
+reporte_trafico = classification_report(
+
+    y_test_t,
+
+    predicciones_trafico,
+
+    target_names=encoder_trafico.classes_,
+
+    output_dict=True,
+
+    zero_division=0
+)
+
+
+print("\n")
+print("=" * 60)
+print("EVALUACIÓN DEL MODELO DE TRÁFICO")
+print("=" * 60)
+
+print("\nClase          Precisión")
+
+for clase in encoder_trafico.classes_:
+
+    precision = reporte_trafico[
+        clase
+    ]["precision"]
+
+    print(
+        f"{clase:<15} {precision:.2f}"
+    )
+
+
+# ============================================================
+# 6. GENERACIÓN DEL DATASET DE CLIMA
+# ============================================================
+
+def generar_dataset_clima(cantidad=800):
+
+    datos = []
+
+    dias = [
+        "Lunes",
+        "Martes",
+        "Miércoles",
+        "Jueves",
+        "Viernes",
+        "Sábado",
+        "Domingo"
+    ]
+
+    rutas = list(RUTAS.keys())
+
+    climas = [
+        "Soleado",
+        "Nublado",
+        "Lluvia",
+        "Tormenta",
+        "Neblina"
+    ]
+
+
+    for _ in range(cantidad):
+
+        hora = random.randint(5, 22)
+
+        dia = random.choice(dias)
+
+        ruta = random.choice(rutas)
+
+        clima = random.choice(climas)
+
+
+        # ----------------------------------------------------
+        # REGLAS SIMULADAS DE AFECTACIÓN
+        # ----------------------------------------------------
+
+        puntaje = 0
+
+
+        # Condición climática
+        if clima == "Soleado":
+
+            puntaje = 0
+
+        elif clima == "Nublado":
+
+            puntaje = 1
+
+        elif clima == "Lluvia":
+
+            puntaje = 2
+
+        elif clima == "Tormenta":
+
+            puntaje = 3
+
+        elif clima == "Neblina":
+
+            puntaje = 3
+
+
+        # Horas de mayor circulación
+        if hora in [7, 8, 9, 17, 18, 19]:
+
+            puntaje += 1
+
+
+        # Fin de semana
+        if dia in ["Sábado", "Domingo"]:
+
+            puntaje -= 1
+
+
+        # ----------------------------------------------------
+        # CLASIFICACIÓN
+        # ----------------------------------------------------
+
+        if puntaje <= 0:
+
+            afectacion = "Sin impacto"
+
+        elif puntaje <= 2:
+
+            afectacion = "Impacto bajo"
+
+        else:
+
+            afectacion = "Impacto alto"
+
+
+        datos.append({
+
+            "hora": hora,
+
+            "dia": dia,
+
+            "ruta": ruta,
+
+            "clima": clima,
+
+            "afectacion": afectacion
+
+        })
+
+
+    return pd.DataFrame(datos)
+
+
+# ============================================================
+# 7. PREPARACIÓN DEL MODELO DE CLIMA
+# ============================================================
+
+df_clima = generar_dataset_clima(800)
+
+
+print("\n")
+print("=" * 60)
+print("DATASET DE AFECTACIÓN CLIMÁTICA")
+print("=" * 60)
+
+display(df_clima.head(20))
+
+
+# ------------------------------------------------------------
+# ENCODERS
+# ------------------------------------------------------------
+
+encoder_dia_clima = LabelEncoder()
+
+encoder_ruta_clima = LabelEncoder()
+
+encoder_clima = LabelEncoder()
+
+encoder_afectacion = LabelEncoder()
+
+
+df_clima["dia_cod"] = (
+    encoder_dia_clima.fit_transform(
+        df_clima["dia"]
+    )
+)
+
+
+df_clima["ruta_cod"] = (
+    encoder_ruta_clima.fit_transform(
+        df_clima["ruta"]
+    )
+)
+
+
+df_clima["clima_cod"] = (
+    encoder_clima.fit_transform(
+        df_clima["clima"]
+    )
+)
+
+
+df_clima["afectacion_cod"] = (
+    encoder_afectacion.fit_transform(
+        df_clima["afectacion"]
+    )
+)
+
+
+# ------------------------------------------------------------
+# VARIABLES DE ENTRADA
+# ------------------------------------------------------------
+
+X_clima = df_clima[
+    [
+        "hora",
+        "dia_cod",
+        "ruta_cod",
+        "clima_cod"
+    ]
+]
+
+
+y_clima = df_clima[
+    "afectacion_cod"
+]
+
+
+# ------------------------------------------------------------
+# DIVISIÓN
+# ------------------------------------------------------------
+
+X_train_c, X_test_c, y_train_c, y_test_c = train_test_split(
+
+    X_clima,
+
+    y_clima,
+
+    test_size=0.20,
+
+    random_state=42,
+
+    stratify=y_clima
+)
+
+
+# ------------------------------------------------------------
+# MODELO
+# ------------------------------------------------------------
+
+modelo_clima = RandomForestClassifier(
+
+    n_estimators=100,
+
+    random_state=42
+
+)
+
+
+modelo_clima.fit(
+
+    X_train_c,
+
+    y_train_c
+
+)
+
+
+# ------------------------------------------------------------
+# EVALUACIÓN
+# ------------------------------------------------------------
+
+predicciones_clima = modelo_clima.predict(
+    X_test_c
+)
+
+
+reporte_clima = classification_report(
+
+    y_test_c,
+
+    predicciones_clima,
+
+    target_names=encoder_afectacion.classes_,
+
+    output_dict=True,
+
+    zero_division=0
+
+)
+
+
+print("\n")
+print("=" * 60)
+print("EVALUACIÓN DEL MODELO DE AFECTACIÓN CLIMÁTICA")
+print("=" * 60)
+
+print("\nClase             Precisión")
+
+for clase in encoder_afectacion.classes_:
+
+    precision = reporte_clima[
+        clase
+    ]["precision"]
+
+    print(
+        f"{clase:<18} {precision:.2f}"
+    )
+
+
+# ============================================================
+# 8. FUNCIONES PARA PREDECIR TRÁFICO
+# ============================================================
+
+def predecir_trafico(
+    hora,
+    dia,
+    ruta
+):
+
+    dia_cod = encoder_dia_trafico.transform(
+        [dia]
+    )[0]
+
+    ruta_cod = encoder_ruta_trafico.transform(
+        [ruta]
+    )[0]
+
+
+    datos = pd.DataFrame({
+
+        "hora": [hora],
+
+        "dia_cod": [dia_cod],
+
+        "ruta_cod": [ruta_cod]
+
+    })
+
+
+    prediccion = modelo_trafico.predict(
+        datos
+    )[0]
+
+
+    trafico = encoder_trafico.inverse_transform(
+        [prediccion]
+    )[0]
+
+
+    return trafico
+
+
+# ============================================================
+# 9. FUNCIÓN PARA PREDECIR AFECTACIÓN CLIMÁTICA
+# ============================================================
+
+def predecir_afectacion_clima(
+
+    hora,
+    dia,
+    ruta,
+    clima
+
+):
+
+    dia_cod = encoder_dia_clima.transform(
+        [dia]
+    )[0]
+
+
+    ruta_cod = encoder_ruta_clima.transform(
+        [ruta]
+    )[0]
+
+
+    clima_cod = encoder_clima.transform(
+        [clima]
+    )[0]
+
+
+    datos = pd.DataFrame({
+
+        "hora": [hora],
+
+        "dia_cod": [dia_cod],
+
+        "ruta_cod": [ruta_cod],
+
+        "clima_cod": [clima_cod]
+
+    })
+
+
+    prediccion = modelo_clima.predict(
+        datos
+    )[0]
+
+
+    afectacion = (
+        encoder_afectacion.inverse_transform(
+            [prediccion]
+        )[0]
+    )
+
+
+    return afectacion
+
+
+# ============================================================
+# 10. AJUSTE DEL TIEMPO SEGÚN AFECTACIÓN CLIMÁTICA
+# ============================================================
+
+def calcular_tiempo_clima(
+
+    tiempo_original,
+
+    afectacion
+
+):
+
+    # IMPORTANTE:
+    # El modelo NO cambia el tiempo original.
+    #
+    # Solamente calculamos una estimación adicional
+    # debido a la posible afectación climática.
+
+    incrementos = {
+
+        "Sin impacto": 0,
+
+        "Impacto bajo": 10,
+
+        "Impacto alto": 20
+
+    }
+
+
+    incremento = incrementos.get(
+        afectacion,
+        0
+    )
+
+
+    tiempo_con_clima = (
+        tiempo_original
+        + incremento
+    )
+
+
+    return incremento, tiempo_con_clima
+
+
+# ============================================================
+# 11. INTERFAZ PRINCIPAL
+# ============================================================
 
 def ejecutar_sistema():
-    """Interfaz de consola: pides origen y destino, y muestras la ruta calculada."""
-    print("=" * 60)
-    print(" SISTEMA BASADO EN CONOCIMIENTO: BOGOTÁ (PORTAL 80) - VILLETA")
-    print("=" * 60)
-    print("Estaciones disponibles en el sistema:")
-    for idx, est in enumerate(ESTACIONES, 1):  # se muestra al usuario la lista numerada para que elija
-        print(f" {idx}. {est}")
-    print("-" * 60)
+
+    print("\n")
+    print("=" * 70)
+    print(
+        " SISTEMA INTELIGENTE DE TRANSPORTE"
+    )
+    print(
+        " BOGOTÁ (PORTAL 80) - VILLETA"
+    )
+    print("=" * 70)
+
+
+    # --------------------------------------------------------
+    # ESTACIONES
+    # --------------------------------------------------------
+
+    print("\nEstaciones disponibles:\n")
+
+
+    for idx, estacion in enumerate(
+        ESTACIONES,
+        1
+    ):
+
+        print(
+            f" {idx}. {estacion}"
+        )
+
+
+    print("-" * 70)
+
 
     try:
-        idx_origen = int(input("Seleccione el número de la estación de ORIGEN (Punto A): ")) - 1
-        idx_destino = int(input("Seleccione el número de la estación de DESTINO (Punto B): ")) - 1
-        if not (0 <= idx_origen < len(ESTACIONES) and 0 <= idx_destino < len(ESTACIONES)):  # Validas que el número elegido exista en la lista
-            print("\n[Error] Selección inválida. Elija un número de la lista.")
+
+        # ----------------------------------------------------
+        # ORIGEN
+        # ----------------------------------------------------
+
+        idx_origen = int(
+            input(
+                "\nSeleccione el número "
+                "de la estación de ORIGEN: "
+            )
+        ) - 1
+
+
+        # ----------------------------------------------------
+        # DESTINO
+        # ----------------------------------------------------
+
+        idx_destino = int(
+            input(
+                "Seleccione el número "
+                "de la estación de DESTINO: "
+            )
+        ) - 1
+
+
+        # Validación
+        if not (
+            0 <= idx_origen < len(ESTACIONES)
+            and
+            0 <= idx_destino < len(ESTACIONES)
+        ):
+
+            print(
+                "\n[Error] Selección inválida."
+            )
+
             return
 
-        origen = ESTACIONES[idx_origen]
-        destino = ESTACIONES[idx_destino]
-        print(f"\n[Calculando mejor ruta desde '{origen}' hasta '{destino}'...]\n")
-        resultado = MotorInferenciaViaje.buscar_mejor_ruta(origen, destino)  # Aquí se dispara todo el razonamiento del motor
-        print("\n" + "=" * 60)
-        print(" RESULTADO DE LA INFERENCIA LÓGICA")
-        print("=" * 60)
-        if resultado:  # Si el motor sí encontró una ruta, la muestras completa
-            print(f"Tipo de Ruta       : {resultado['tipo']}")
-            print(f"Paradas            : {resultado['paradas']}")
-            if resultado.get('paradas_tiquete'):  # Solo la muestras si hubo revisiones de tiquete
-                print(f"Paradas de tiquete : {resultado['paradas_tiquete']}")
-            print(f"Tiempo Estimado    : {resultado['tiempo_estimado']} minutos")
-            print("\nInstrucciones de Viaje:")
-            for paso in resultado["detalle"]:
-                print(f" -> {paso}")
-        else:  # Si no, le avisas al usuario que no hubo forma de conectar los puntos
-            print("No se encontró una ruta lógica válida para conectar los dos puntos seleccionados.")
-    except ValueError:  # Si el usuario escribe algo que no es un número
-        print("\n[Error] Debe ingresar únicamente números enteros.")
+
+        origen = ESTACIONES[
+            idx_origen
+        ]
+
+        destino = ESTACIONES[
+            idx_destino
+        ]
 
 
-if __name__ == "__main__":
-    ejecutar_sistema()
+        # ----------------------------------------------------
+        # HORA
+        # ----------------------------------------------------
+
+        hora = int(
+            input(
+                "\nIngrese la hora del viaje "
+                "(5 - 22): "
+            )
+        )
+
+
+        if hora < 5 or hora > 22:
+
+            print(
+                "\n[Error] La hora debe "
+                "estar entre 5 y 22."
+            )
+
+            return
+
+
+        # ----------------------------------------------------
+        # DÍA
+        # ----------------------------------------------------
+
+        print("\nDías disponibles:")
+
+        dias = [
+            "Lunes",
+            "Martes",
+            "Miércoles",
+            "Jueves",
+            "Viernes",
+            "Sábado",
+            "Domingo"
+        ]
+
+
+        for idx, dia in enumerate(
+            dias,
+            1
+        ):
+
+            print(
+                f" {idx}. {dia}"
+            )
+
+
+        idx_dia = int(
+            input(
+                "\nSeleccione el número "
+                "del día: "
+            )
+        ) - 1
+
+
+        if not (
+            0 <= idx_dia < len(dias)
+        ):
+
+            print(
+                "\n[Error] Día inválido."
+            )
+
+            return
+
+
+        dia = dias[idx_dia]
+
+
+        # ----------------------------------------------------
+        # CLIMA
+        # ----------------------------------------------------
+
+        print("\nCondiciones climáticas:")
+
+        climas = [
+            "Soleado",
+            "Nublado",
+            "Lluvia",
+            "Tormenta",
+            "Neblina"
+        ]
+
+
+        for idx, clima in enumerate(
+            climas,
+            1
+        ):
+
+            print(
+                f" {idx}. {clima}"
+            )
+
+
+        idx_clima = int(
+            input(
+                "\nSeleccione el número "
+                "del clima: "
+            )
+        ) - 1
+
+
+        if not (
+            0 <= idx_clima < len(climas)
+        ):
+
+            print(
+                "\n[Error] Condición climática inválida."
+            )
+
+            return
+
+
+        clima = climas[idx_clima]
+
+
+        # ====================================================
+        # MOTOR DE INFERENCIA
+        # ====================================================
+
+        print("\n")
+        print("=" * 70)
+        print("PROCESANDO INFORMACIÓN...")
+        print("=" * 70)
+
+
+        resultado = (
+            TransMi.buscar_mejor_ruta(
+                origen,
+                destino
+            )
+        )
+
+
+        if not resultado:
+
+            print(
+                "\nNo se encontró una "
+                "ruta válida."
+            )
+
+            return
+
+
+        # ====================================================
+        # RUTA VÁLIDA
+        # ====================================================
+
+        ruta = resultado.get(
+            "ruta"
+        )
+
+
+        # ====================================================
+        # MODELO DE TRÁFICO
+        # ====================================================
+
+        trafico = predecir_trafico(
+
+            hora,
+
+            dia,
+
+            ruta
+
+        )
+
+
+        # ====================================================
+        # MODELO DE CLIMA
+        # ====================================================
+
+        afectacion = (
+            predecir_afectacion_clima(
+
+                hora,
+
+                dia,
+
+                ruta,
+
+                clima
+
+            )
+        )
+
+
+        # ====================================================
+        # TIEMPO ORIGINAL + CLIMA
+        # ====================================================
+
+        tiempo_original = (
+            resultado[
+                "tiempo_estimado"
+            ]
+        )
+
+
+        incremento, tiempo_con_clima = (
+            calcular_tiempo_clima(
+
+                tiempo_original,
+
+                afectacion
+
+            )
+        )
+
+
+        # ====================================================
+        # RESULTADO FINAL
+        # ====================================================
+
+        print("\n")
+        print("=" * 70)
+        print(" RESULTADO DEL SISTEMA")
+        print("=" * 70)
+
+
+        print(
+            f"Punto A                 : {origen}"
+        )
+
+        print(
+            f"Punto B                 : {destino}"
+        )
+
+        print(
+            f"Hora                    : {hora}:00"
+        )
+
+        print(
+            f"Día                     : {dia}"
+        )
+
+        print(
+            f"Condición climática     : {clima}"
+        )
+
+
+        print("\n")
+        print("-" * 70)
+        print("RESULTADO DE LA INFERENCIA LÓGICA")
+        print("-" * 70)
+
+
+        print(
+            f"Ruta                    : {ruta}"
+        )
+
+        print(
+            f"Tipo de Ruta            : {resultado['tipo']}"
+        )
+
+        print(
+            f"Paradas                 : {resultado['paradas']}"
+        )
+
+        print(
+            f"Paradas de tiquete      : "
+            f"{resultado.get('paradas_tiquete', 0)}"
+        )
+
+        print(
+            f"Tiempo Original         : "
+            f"{tiempo_original} minutos"
+        )
+
+
+        print("\n")
+        print("-" * 70)
+        print("APRENDIZAJE SUPERVISADO")
+        print("-" * 70)
+
+
+        print(
+            f"Tráfico previsto        : "
+            f"{trafico}"
+        )
+
+
+        print(
+            f"Afectación climática    : "
+            f"{afectacion}"
+        )
+
+
+        print("\n")
+        print("-" * 70)
+        print("ESTIMACIÓN DEL TIEMPO CON CLIMA")
+        print("-" * 70)
+
+
+        print(
+            f"Tiempo original         : "
+            f"{tiempo_original} minutos"
+        )
+
+
+        print(
+            f"Incremento por clima    : "
+            f"+{incremento} minutos"
+        )
+
+
+        print(
+            f"Tiempo con clima        : "
+            f"{tiempo_con_clima} minutos"
+        )
+
+
+        print("\n")
+        print("-" * 70)
+        print("INSTRUCCIONES DE VIAJE")
+        print("-" * 70)
+
+
+        for paso in resultado["detalle"]:
+
+            print(
+                f" -> {paso}"
+            )
+
+
+        print("\n")
+        print("=" * 70)
+        print(" FIN DEL RESULTADO")
+        print("=" * 70)
+
+
+    except ValueError:
+
+        print(
+            "\n[Error] Debe ingresar "
+            "únicamente números."
+        )
+
+
+# ============================================================
+# 12. EJECUTAR SISTEMA
+# ============================================================
+
+ejecutar_sistema()
