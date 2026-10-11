@@ -11,9 +11,9 @@ Incluye:
 2. Aprendizaje supervisado para predecir tráfico.
 3. Aprendizaje supervisado para estimar afectación climática.
 4. Tiempo original + posible afectación por clima.
+5. Aprendizaje supervisado para predecir demanda de pasajeros.
 ============================================================
 """
-
 
 # ============================================================
 # 1. IMPORTACIÓN DE LIBRERÍAS
@@ -46,13 +46,11 @@ ESTACIONES = [
     "Villeta"
 ]
 
-
 # ------------------------------------------------------------
 # RUTAS ORIGINALES
 # ------------------------------------------------------------
 
 RUTAS: Dict[str, List[str]] = {
-
     "Bogotá - Villeta": [
         "Portal 80",
         "Siberia",
@@ -86,7 +84,6 @@ RUTAS: Dict[str, List[str]] = {
 # ------------------------------------------------------------
 
 PARADAS_TIQUETE: Dict[str, Dict[str, int]] = {
-
     "Bogotá - Villeta": {
         "El Rosal": 1,
         "La Vega": 1
@@ -97,9 +94,7 @@ PARADAS_TIQUETE: Dict[str, Dict[str, int]] = {
         "La Vega": 1,
         "El Rosal": 1
     },
-
 }
-
 
 TIEMPO_TIQUETE = 10
 
@@ -109,7 +104,6 @@ TIEMPO_TIQUETE = 10
 # ------------------------------------------------------------
 
 TIEMPO_ACUMULADO: Dict[str, int] = {
-
     "Portal 80": 0,
     "Siberia": 20,
     "La Punta": 38,
@@ -120,9 +114,7 @@ TIEMPO_ACUMULADO: Dict[str, int] = {
     "La Vega": 100,
     "Nocaima": 110,
     "Villeta": 120,
-
 }
-
 
 TIEMPO_TRASBORDO = 15
 
@@ -220,27 +212,16 @@ class TransMi:
                         )
 
                     opciones_directas.append({
-
                         "tipo": "Directa",
-
                         "ruta": nombre_ruta,
-
                         "trasbordos": 0,
-
                         "paradas": paradas,
-
-                        "paradas_tiquete":
-                            total_revisiones,
-
-                        "tiempo_estimado":
-                            tiempo,
-
+                        "paradas_tiquete": total_revisiones,
+                        "tiempo_estimado": tiempo,
                         "detalle": detalle
-
                     })
 
         return opciones_directas
-
 
     @classmethod
     def buscar_mejor_ruta(
@@ -262,7 +243,6 @@ class TransMi:
 
             return None
 
-
         # Mismo punto
         if origen == destino:
 
@@ -272,25 +252,16 @@ class TransMi:
             )
 
             return {
-
                 "tipo": "Misma Estación",
-
                 "ruta": "Ninguna",
-
                 "trasbordos": 0,
-
                 "paradas": 0,
-
                 "paradas_tiquete": 0,
-
                 "tiempo_estimado": 0,
-
                 "detalle": [
                     "Ya te encuentras en la estación destino."
                 ]
-
             }
-
 
         # ----------------------------------------------------
         # REGLA DE CONEXIÓN DIRECTA
@@ -305,7 +276,6 @@ class TransMi:
             origen,
             destino
         )
-
 
         if rutas_directas:
 
@@ -322,7 +292,6 @@ class TransMi:
             )
 
             return rutas_directas[0]
-
 
         # ----------------------------------------------------
         # NO HAY RUTA DIRECTA
@@ -358,9 +327,7 @@ def generar_dataset_trafico(cantidad=800):
     for _ in range(cantidad):
 
         hora = random.randint(5, 22)
-
         dia = random.choice(dias)
-
         ruta = random.choice(rutas)
 
         # ----------------------------------------------------
@@ -393,30 +360,20 @@ def generar_dataset_trafico(cantidad=800):
 
         # Clasificación
         if puntaje >= 3:
-
             trafico = "Alto"
 
         elif puntaje >= 1:
-
             trafico = "Medio"
 
         else:
-
             trafico = "Bajo"
 
-
         datos.append({
-
             "hora": hora,
-
             "dia": dia,
-
             "ruta": ruta,
-
             "trafico": trafico
-
         })
-
 
     return pd.DataFrame(datos)
 
@@ -427,13 +384,11 @@ def generar_dataset_trafico(cantidad=800):
 
 df_trafico = generar_dataset_trafico(800)
 
-
 print("=" * 60)
 print("DATASET DE TRÁFICO")
 print("=" * 60)
 
 display(df_trafico.head(20))
-
 
 # ------------------------------------------------------------
 # CONVERTIR VARIABLES CATEGÓRICAS
@@ -443,13 +398,11 @@ encoder_dia_trafico = LabelEncoder()
 encoder_ruta_trafico = LabelEncoder()
 encoder_trafico = LabelEncoder()
 
-
 df_trafico["dia_cod"] = (
     encoder_dia_trafico.fit_transform(
         df_trafico["dia"]
     )
 )
-
 
 df_trafico["ruta_cod"] = (
     encoder_ruta_trafico.fit_transform(
@@ -457,13 +410,11 @@ df_trafico["ruta_cod"] = (
     )
 )
 
-
 df_trafico["trafico_cod"] = (
     encoder_trafico.fit_transform(
         df_trafico["trafico"]
     )
 )
-
 
 # ------------------------------------------------------------
 # VARIABLES DEL MODELO
@@ -477,47 +428,33 @@ X_trafico = df_trafico[
     ]
 ]
 
-
-y_trafico = df_trafico[
-    "trafico_cod"
-]
-
+y_trafico = df_trafico["trafico_cod"]
 
 # ------------------------------------------------------------
 # DIVISIÓN ENTRENAMIENTO / PRUEBA
 # ------------------------------------------------------------
 
 X_train_t, X_test_t, y_train_t, y_test_t = train_test_split(
-
     X_trafico,
     y_trafico,
-
     test_size=0.20,
-
     random_state=42,
-
     stratify=y_trafico
 )
-
 
 # ------------------------------------------------------------
 # MODELO SUPERVISADO
 # ------------------------------------------------------------
 
 modelo_trafico = RandomForestClassifier(
-
     n_estimators=100,
-
     random_state=42
-
 )
-
 
 modelo_trafico.fit(
     X_train_t,
     y_train_t
 )
-
 
 # ------------------------------------------------------------
 # EVALUACIÓN: SOLO PRECISIÓN
@@ -527,20 +464,13 @@ predicciones_trafico = modelo_trafico.predict(
     X_test_t
 )
 
-
 reporte_trafico = classification_report(
-
     y_test_t,
-
     predicciones_trafico,
-
     target_names=encoder_trafico.classes_,
-
     output_dict=True,
-
     zero_division=0
 )
-
 
 print("\n")
 print("=" * 60)
@@ -551,9 +481,7 @@ print("\nClase          Precisión")
 
 for clase in encoder_trafico.classes_:
 
-    precision = reporte_trafico[
-        clase
-    ]["precision"]
+    precision = reporte_trafico[clase]["precision"]
 
     print(
         f"{clase:<15} {precision:.2f}"
@@ -588,17 +516,12 @@ def generar_dataset_clima(cantidad=800):
         "Neblina"
     ]
 
-
     for _ in range(cantidad):
 
         hora = random.randint(5, 22)
-
         dia = random.choice(dias)
-
         ruta = random.choice(rutas)
-
         clima = random.choice(climas)
-
 
         # ----------------------------------------------------
         # REGLAS SIMULADAS DE AFECTACIÓN
@@ -606,72 +529,50 @@ def generar_dataset_clima(cantidad=800):
 
         puntaje = 0
 
-
         # Condición climática
         if clima == "Soleado":
-
             puntaje = 0
 
         elif clima == "Nublado":
-
             puntaje = 1
 
         elif clima == "Lluvia":
-
             puntaje = 2
 
         elif clima == "Tormenta":
-
             puntaje = 3
 
         elif clima == "Neblina":
-
             puntaje = 3
-
 
         # Horas de mayor circulación
         if hora in [7, 8, 9, 17, 18, 19]:
-
             puntaje += 1
-
 
         # Fin de semana
         if dia in ["Sábado", "Domingo"]:
-
             puntaje -= 1
-
 
         # ----------------------------------------------------
         # CLASIFICACIÓN
         # ----------------------------------------------------
 
         if puntaje <= 0:
-
             afectacion = "Sin impacto"
 
         elif puntaje <= 2:
-
             afectacion = "Impacto bajo"
 
         else:
-
             afectacion = "Impacto alto"
 
-
         datos.append({
-
             "hora": hora,
-
             "dia": dia,
-
             "ruta": ruta,
-
             "clima": clima,
-
             "afectacion": afectacion
-
         })
-
 
     return pd.DataFrame(datos)
 
@@ -682,7 +583,6 @@ def generar_dataset_clima(cantidad=800):
 
 df_clima = generar_dataset_clima(800)
 
-
 print("\n")
 print("=" * 60)
 print("DATASET DE AFECTACIÓN CLIMÁTICA")
@@ -690,19 +590,14 @@ print("=" * 60)
 
 display(df_clima.head(20))
 
-
 # ------------------------------------------------------------
 # ENCODERS
 # ------------------------------------------------------------
 
 encoder_dia_clima = LabelEncoder()
-
 encoder_ruta_clima = LabelEncoder()
-
 encoder_clima = LabelEncoder()
-
 encoder_afectacion = LabelEncoder()
-
 
 df_clima["dia_cod"] = (
     encoder_dia_clima.fit_transform(
@@ -710,13 +605,11 @@ df_clima["dia_cod"] = (
     )
 )
 
-
 df_clima["ruta_cod"] = (
     encoder_ruta_clima.fit_transform(
         df_clima["ruta"]
     )
 )
-
 
 df_clima["clima_cod"] = (
     encoder_clima.fit_transform(
@@ -724,13 +617,11 @@ df_clima["clima_cod"] = (
     )
 )
 
-
 df_clima["afectacion_cod"] = (
     encoder_afectacion.fit_transform(
         df_clima["afectacion"]
     )
 )
-
 
 # ------------------------------------------------------------
 # VARIABLES DE ENTRADA
@@ -745,51 +636,33 @@ X_clima = df_clima[
     ]
 ]
 
-
-y_clima = df_clima[
-    "afectacion_cod"
-]
-
+y_clima = df_clima["afectacion_cod"]
 
 # ------------------------------------------------------------
 # DIVISIÓN
 # ------------------------------------------------------------
 
 X_train_c, X_test_c, y_train_c, y_test_c = train_test_split(
-
     X_clima,
-
     y_clima,
-
     test_size=0.20,
-
     random_state=42,
-
     stratify=y_clima
 )
-
 
 # ------------------------------------------------------------
 # MODELO
 # ------------------------------------------------------------
 
 modelo_clima = RandomForestClassifier(
-
     n_estimators=100,
-
     random_state=42
-
 )
-
 
 modelo_clima.fit(
-
     X_train_c,
-
     y_train_c
-
 )
-
 
 # ------------------------------------------------------------
 # EVALUACIÓN
@@ -799,21 +672,13 @@ predicciones_clima = modelo_clima.predict(
     X_test_c
 )
 
-
 reporte_clima = classification_report(
-
     y_test_c,
-
     predicciones_clima,
-
     target_names=encoder_afectacion.classes_,
-
     output_dict=True,
-
     zero_division=0
-
 )
-
 
 print("\n")
 print("=" * 60)
@@ -824,9 +689,165 @@ print("\nClase             Precisión")
 
 for clase in encoder_afectacion.classes_:
 
-    precision = reporte_clima[
-        clase
-    ]["precision"]
+    precision = reporte_clima[clase]["precision"]
+
+    print(
+        f"{clase:<18} {precision:.2f}"
+    )
+
+
+# ============================================================
+# 7A. GENERACIÓN DEL DATASET DE DEMANDA DE PASAJEROS
+# ============================================================
+
+def generar_dataset_demanda(cantidad=800):
+    """Genera datos simulados para clasificar la demanda de pasajeros.
+
+    IMPORTANTE: las etiquetas se crean mediante reglas artificiales.
+    Para uso real, deben reemplazarse por conteos históricos de pasajeros.
+    """
+
+    datos = []
+
+    dias = [
+        "Lunes", "Martes", "Miércoles", "Jueves",
+        "Viernes", "Sábado", "Domingo"
+    ]
+
+    rutas = list(RUTAS.keys())
+
+    for _ in range(cantidad):
+
+        hora = random.randint(5, 22)
+        dia = random.choice(dias)
+        ruta = random.choice(rutas)
+
+        puntaje = 0
+
+        # Horas habituales de mayor demanda
+        if hora in [6, 7, 8, 9, 17, 18, 19]:
+            puntaje += 2
+
+        elif hora in [10, 11, 12, 13, 14, 15, 16]:
+            puntaje += 1
+
+        # Viernes puede aumentar la demanda de viajes intermunicipales
+        if dia == "Viernes":
+            puntaje += 1
+
+        # En este ejemplo se supone una demanda algo mayor hacia Villeta
+        if ruta == "Bogotá - Villeta":
+            puntaje += 1
+
+        # Se aplica una reducción simulada durante el fin de semana.
+        # Es una regla ilustrativa, no una conclusión basada en datos reales.
+        if dia == "Domingo":
+            puntaje -= 1
+
+        if puntaje >= 3:
+            demanda = "Alta"
+
+        elif puntaje >= 1:
+            demanda = "Media"
+
+        else:
+            demanda = "Baja"
+
+        datos.append({
+            "hora": hora,
+            "dia": dia,
+            "ruta": ruta,
+            "demanda": demanda
+        })
+
+    return pd.DataFrame(datos)
+
+
+# ============================================================
+# 7B. PREPARACIÓN Y ENTRENAMIENTO DEL MODELO DE DEMANDA
+# ============================================================
+
+df_demanda = generar_dataset_demanda(800)
+
+print("\n")
+print("=" * 60)
+print("DATASET DE DEMANDA DE PASAJEROS")
+print("=" * 60)
+
+display(df_demanda.head(20))
+
+encoder_dia_demanda = LabelEncoder()
+encoder_ruta_demanda = LabelEncoder()
+encoder_demanda = LabelEncoder()
+
+df_demanda["dia_cod"] = (
+    encoder_dia_demanda.fit_transform(
+        df_demanda["dia"]
+    )
+)
+
+df_demanda["ruta_cod"] = (
+    encoder_ruta_demanda.fit_transform(
+        df_demanda["ruta"]
+    )
+)
+
+df_demanda["demanda_cod"] = (
+    encoder_demanda.fit_transform(
+        df_demanda["demanda"]
+    )
+)
+
+X_demanda = df_demanda[
+    [
+        "hora",
+        "dia_cod",
+        "ruta_cod"
+    ]
+]
+
+y_demanda = df_demanda["demanda_cod"]
+
+X_train_d, X_test_d, y_train_d, y_test_d = train_test_split(
+    X_demanda,
+    y_demanda,
+    test_size=0.20,
+    random_state=42,
+    stratify=y_demanda
+)
+
+modelo_demanda = RandomForestClassifier(
+    n_estimators=100,
+    random_state=42
+)
+
+modelo_demanda.fit(
+    X_train_d,
+    y_train_d
+)
+
+predicciones_demanda = modelo_demanda.predict(
+    X_test_d
+)
+
+reporte_demanda = classification_report(
+    y_test_d,
+    predicciones_demanda,
+    target_names=encoder_demanda.classes_,
+    output_dict=True,
+    zero_division=0
+)
+
+print("\n")
+print("=" * 60)
+print("EVALUACIÓN DEL MODELO DE DEMANDA")
+print("=" * 60)
+
+print("\nClase             Precisión")
+
+for clase in encoder_demanda.classes_:
+
+    precision = reporte_demanda[clase]["precision"]
 
     print(
         f"{clase:<18} {precision:.2f}"
@@ -851,27 +872,19 @@ def predecir_trafico(
         [ruta]
     )[0]
 
-
     datos = pd.DataFrame({
-
         "hora": [hora],
-
         "dia_cod": [dia_cod],
-
         "ruta_cod": [ruta_cod]
-
     })
-
 
     prediccion = modelo_trafico.predict(
         datos
     )[0]
 
-
     trafico = encoder_trafico.inverse_transform(
         [prediccion]
     )[0]
-
 
     return trafico
 
@@ -881,46 +894,34 @@ def predecir_trafico(
 # ============================================================
 
 def predecir_afectacion_clima(
-
     hora,
     dia,
     ruta,
     clima
-
 ):
 
     dia_cod = encoder_dia_clima.transform(
         [dia]
     )[0]
 
-
     ruta_cod = encoder_ruta_clima.transform(
         [ruta]
     )[0]
-
 
     clima_cod = encoder_clima.transform(
         [clima]
     )[0]
 
-
     datos = pd.DataFrame({
-
         "hora": [hora],
-
         "dia_cod": [dia_cod],
-
         "ruta_cod": [ruta_cod],
-
         "clima_cod": [clima_cod]
-
     })
-
 
     prediccion = modelo_clima.predict(
         datos
     )[0]
-
 
     afectacion = (
         encoder_afectacion.inverse_transform(
@@ -928,8 +929,39 @@ def predecir_afectacion_clima(
         )[0]
     )
 
-
     return afectacion
+
+
+# ============================================================
+# 9A. FUNCIÓN PARA PREDECIR LA DEMANDA DE PASAJEROS
+# ============================================================
+
+def predecir_demanda(hora, dia, ruta):
+    """Predice la demanda simulada: Baja, Media o Alta."""
+
+    dia_cod = encoder_dia_demanda.transform(
+        [dia]
+    )[0]
+
+    ruta_cod = encoder_ruta_demanda.transform(
+        [ruta]
+    )[0]
+
+    datos = pd.DataFrame({
+        "hora": [hora],
+        "dia_cod": [dia_cod],
+        "ruta_cod": [ruta_cod]
+    })
+
+    prediccion = modelo_demanda.predict(
+        datos
+    )[0]
+
+    demanda = encoder_demanda.inverse_transform(
+        [prediccion]
+    )[0]
+
+    return demanda
 
 
 # ============================================================
@@ -937,11 +969,8 @@ def predecir_afectacion_clima(
 # ============================================================
 
 def calcular_tiempo_clima(
-
     tiempo_original,
-
     afectacion
-
 ):
 
     # IMPORTANTE:
@@ -951,27 +980,20 @@ def calcular_tiempo_clima(
     # debido a la posible afectación climática.
 
     incrementos = {
-
         "Sin impacto": 0,
-
         "Impacto bajo": 10,
-
         "Impacto alto": 20
-
     }
-
 
     incremento = incrementos.get(
         afectacion,
         0
     )
 
-
     tiempo_con_clima = (
         tiempo_original
         + incremento
     )
-
 
     return incremento, tiempo_con_clima
 
@@ -984,21 +1006,22 @@ def ejecutar_sistema():
 
     print("\n")
     print("=" * 70)
+
     print(
         " SISTEMA INTELIGENTE DE TRANSPORTE"
     )
+
     print(
         " BOGOTÁ (PORTAL 80) - VILLETA"
     )
-    print("=" * 70)
 
+    print("=" * 70)
 
     # --------------------------------------------------------
     # ESTACIONES
     # --------------------------------------------------------
 
     print("\nEstaciones disponibles:\n")
-
 
     for idx, estacion in enumerate(
         ESTACIONES,
@@ -1009,9 +1032,7 @@ def ejecutar_sistema():
             f" {idx}. {estacion}"
         )
 
-
     print("-" * 70)
-
 
     try:
 
@@ -1026,7 +1047,6 @@ def ejecutar_sistema():
             )
         ) - 1
 
-
         # ----------------------------------------------------
         # DESTINO
         # ----------------------------------------------------
@@ -1037,7 +1057,6 @@ def ejecutar_sistema():
                 "de la estación de DESTINO: "
             )
         ) - 1
-
 
         # Validación
         if not (
@@ -1052,7 +1071,6 @@ def ejecutar_sistema():
 
             return
 
-
         origen = ESTACIONES[
             idx_origen
         ]
@@ -1060,7 +1078,6 @@ def ejecutar_sistema():
         destino = ESTACIONES[
             idx_destino
         ]
-
 
         # ----------------------------------------------------
         # HORA
@@ -1073,7 +1090,6 @@ def ejecutar_sistema():
             )
         )
 
-
         if hora < 5 or hora > 22:
 
             print(
@@ -1082,7 +1098,6 @@ def ejecutar_sistema():
             )
 
             return
-
 
         # ----------------------------------------------------
         # DÍA
@@ -1100,7 +1115,6 @@ def ejecutar_sistema():
             "Domingo"
         ]
 
-
         for idx, dia in enumerate(
             dias,
             1
@@ -1110,14 +1124,12 @@ def ejecutar_sistema():
                 f" {idx}. {dia}"
             )
 
-
         idx_dia = int(
             input(
                 "\nSeleccione el número "
                 "del día: "
             )
         ) - 1
-
 
         if not (
             0 <= idx_dia < len(dias)
@@ -1129,9 +1141,7 @@ def ejecutar_sistema():
 
             return
 
-
         dia = dias[idx_dia]
-
 
         # ----------------------------------------------------
         # CLIMA
@@ -1147,7 +1157,6 @@ def ejecutar_sistema():
             "Neblina"
         ]
 
-
         for idx, clima in enumerate(
             climas,
             1
@@ -1157,14 +1166,12 @@ def ejecutar_sistema():
                 f" {idx}. {clima}"
             )
 
-
         idx_clima = int(
             input(
                 "\nSeleccione el número "
                 "del clima: "
             )
         ) - 1
-
 
         if not (
             0 <= idx_clima < len(climas)
@@ -1176,9 +1183,7 @@ def ejecutar_sistema():
 
             return
 
-
         clima = climas[idx_clima]
-
 
         # ====================================================
         # MOTOR DE INFERENCIA
@@ -1189,14 +1194,12 @@ def ejecutar_sistema():
         print("PROCESANDO INFORMACIÓN...")
         print("=" * 70)
 
-
         resultado = (
             TransMi.buscar_mejor_ruta(
                 origen,
                 destino
             )
         )
-
 
         if not resultado:
 
@@ -1207,7 +1210,6 @@ def ejecutar_sistema():
 
             return
 
-
         # ====================================================
         # RUTA VÁLIDA
         # ====================================================
@@ -1216,21 +1218,15 @@ def ejecutar_sistema():
             "ruta"
         )
 
-
         # ====================================================
         # MODELO DE TRÁFICO
         # ====================================================
 
         trafico = predecir_trafico(
-
             hora,
-
             dia,
-
             ruta
-
         )
-
 
         # ====================================================
         # MODELO DE CLIMA
@@ -1238,18 +1234,22 @@ def ejecutar_sistema():
 
         afectacion = (
             predecir_afectacion_clima(
-
                 hora,
-
                 dia,
-
                 ruta,
-
                 clima
-
             )
         )
 
+        # ====================================================
+        # MODELO DE DEMANDA DE PASAJEROS (NUEVO)
+        # ====================================================
+
+        demanda = predecir_demanda(
+            hora,
+            dia,
+            ruta
+        )
 
         # ====================================================
         # TIEMPO ORIGINAL + CLIMA
@@ -1261,17 +1261,12 @@ def ejecutar_sistema():
             ]
         )
 
-
         incremento, tiempo_con_clima = (
             calcular_tiempo_clima(
-
                 tiempo_original,
-
                 afectacion
-
             )
         )
-
 
         # ====================================================
         # RESULTADO FINAL
@@ -1281,7 +1276,6 @@ def ejecutar_sistema():
         print("=" * 70)
         print(" RESULTADO DEL SISTEMA")
         print("=" * 70)
-
 
         print(
             f"Punto A                 : {origen}"
@@ -1303,12 +1297,10 @@ def ejecutar_sistema():
             f"Condición climática     : {clima}"
         )
 
-
         print("\n")
         print("-" * 70)
         print("RESULTADO DE LA INFERENCIA LÓGICA")
         print("-" * 70)
-
 
         print(
             f"Ruta                    : {ruta}"
@@ -1333,22 +1325,16 @@ def ejecutar_sistema():
         )
 
 
-        print("\n")
-        print("-" * 70)
+        print("\n" + "-" * 70)
         print("APRENDIZAJE SUPERVISADO")
         print("-" * 70)
+        print(f"Tráfico previsto        : {trafico}")
+        print(f"Afectación climática    : {afectacion}")
 
-
-        print(
-            f"Tráfico previsto        : "
-            f"{trafico}"
-        )
-
-
-        print(
-            f"Afectación climática    : "
-            f"{afectacion}"
-        )
+        print("\n" + "-" * 70)
+        print("APRENDIZAJE AUTOMÁTICO")
+        print("-" * 70)
+        print(f"Demanda de pasajeros    : {demanda}")
 
 
         print("\n")
@@ -1356,30 +1342,25 @@ def ejecutar_sistema():
         print("ESTIMACIÓN DEL TIEMPO CON CLIMA")
         print("-" * 70)
 
-
         print(
             f"Tiempo original         : "
             f"{tiempo_original} minutos"
         )
-
 
         print(
             f"Incremento por clima    : "
             f"+{incremento} minutos"
         )
 
-
         print(
             f"Tiempo con clima        : "
             f"{tiempo_con_clima} minutos"
         )
 
-
         print("\n")
         print("-" * 70)
         print("INSTRUCCIONES DE VIAJE")
         print("-" * 70)
-
 
         for paso in resultado["detalle"]:
 
@@ -1387,12 +1368,10 @@ def ejecutar_sistema():
                 f" -> {paso}"
             )
 
-
         print("\n")
         print("=" * 70)
         print(" FIN DEL RESULTADO")
         print("=" * 70)
-
 
     except ValueError:
 
